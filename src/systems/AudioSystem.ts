@@ -9,8 +9,14 @@
  * store with a short gain ramp so toggling never clicks.
  *
  * Graph:  voices -> sfxBus ┐
- *         ambience -> ambienceBus ┘-> masterGain -> compressor -> destination
+ *         ambience -> ambienceBus ┼-> masterGain -> compressor -> destination
+ *         music -> musicBus      ┘
+ *
+ * The one non-procedural element is the background track "Golden Hour Puck"
+ * (bundled mp3), fetched + decoded lazily after the first gesture and looped
+ * through its own bus so it ducks under jingles and stays below SFX.
  */
+import musicUrl from '../assets/audio/golden-hour-puck.mp3';
 import type { EventBus, Side } from '../core/Events';
 import type { GameState } from '../game/Game';
 import { settings } from './Settings';
@@ -21,6 +27,8 @@ export interface AudioDiagnostics {
   activeVoices: number;
   voicesFired: number;
   ambienceOn: boolean;
+  musicOn: boolean;
+  musicLoaded: boolean;
   muted: boolean;
 }
 
@@ -28,8 +36,14 @@ export interface AudioDiagnostics {
 const MAX_HITS_PER_SECOND = 12;
 /** Mute/unmute gain ramp (seconds) — long enough to avoid clicks. */
 const MUTE_RAMP = 0.05;
-/** Ambience bed level. Roughly -30 dB below typical SFX peaks. */
-const AMBIENCE_LEVEL = 0.022;
+/** Ambience bed level. Lowered a touch now that real music carries warmth. */
+const AMBIENCE_LEVEL = 0.014;
+/** Background music level — mixed so SFX stay clearly on top. */
+const MUSIC_LEVEL = 0.28;
+/** Music level on the game-over screen (sits under the win/lose jingle). */
+const MUSIC_GAMEOVER_LEVEL = 0.12;
+/** Music fade in/out time (seconds). */
+const MUSIC_FADE = 0.5;
 
 export class AudioSystem {
   private ctx: AudioContext | null = null;
@@ -51,6 +65,14 @@ export class AudioSystem {
   private ambienceFilter: BiquadFilterNode | null = null;
   private crackleTimer: number | undefined;
   private duckUntil = 0;
+
+  // Background music state (buffer decoded once; source recreated per start).
+  private musicBus!: GainNode;
+  private musicBuffer: AudioBuffer | null = null;
+  private musicLoadStarted = false;
+  private musicSource: AudioBufferSourceNode | null = null;
+  private musicOn = false;
+  private musicBase = MUSIC_LEVEL;
 
   // Game-state mirror (updated by Game.update; cheap diffing only).
   private lastState: GameState = 'title';
@@ -89,6 +111,7 @@ export class AudioSystem {
     for (const unsubscribe of this.unsubscribers) unsubscribe();
     this.unsubscribers.length = 0;
     this.stopAmbience();
+    this.stopMusic();
     if (this.ctx) {
       void this.ctx.close();
       this.ctx = null;
@@ -115,6 +138,24 @@ export class AudioSystem {
       !paused && (state === 'playing' || state === 'serving' || state === 'goal');
     if (wantAmbience) this.startAmbience();
     else this.stopAmbience();
+
+    // Music also plays (quieter) on the game-over screen under the jingle.
+    const wantMusic = !paused && state !== 'title';
+    if (wantMusic) this.startMusic();
+    else this.stopMusic();
+
+    // Retarget the music level only when the base actually changes
+    // (gameover <-> gameplay) so goal-jingle ducking isn't cancelled.
+    const base = state === 'gameover' ? MUSIC_GAMEOVER_LEVEL : MUSIC_LEVEL;
+    if (base !== this.musicBase) {
+      this.musicBase = base;
+      if (this.musicOn && this.ctx) {
+        const now = this.ctx.currentTime;
+        this.musicBus.gain.cancelScheduledValues(now);
+        this.musicBus.gain.setValueAtTime(this.musicBus.gain.value, now);
+        this.musicBus.gain.linearRampToValueAtTime(base, now + MUSIC_FADE);
+      }
+    }
   }
 
   diagnostics(): AudioDiagnostics {
@@ -124,6 +165,8 @@ export class AudioSystem {
       activeVoices: this.activeVoices,
       voicesFired: this.voicesFired,
       ambienceOn: this.ambienceOn,
+      musicOn: this.musicOn,
+      musicLoaded: this.musicBuffer !== null,
       muted: settings.muted,
     };
   }
@@ -157,23 +200,46 @@ export class AudioSystem {
       this.ambienceBus.gain.value = AMBIENCE_LEVEL;
       this.ambienceBus.connect(this.master);
 
+      this.musicBus = this.ctx.createGain();
+      this.musicBus.gain.value = 0.0001;
+      this.musicBus.connect(this.master);
+
       this.noiseBuffer = this.createNoiseBuffer('white');
       this.brownBuffer = this.createNoiseBuffer('brown');
     }
     if (this.ctx.state === 'suspended') {
-      // Resume may complete asynchronously — re-check ambience afterwards.
-      void this.ctx.resume().then(() => this.catchUpAmbience());
+      // Resume may complete asynchronously — re-check beds afterwards.
+      void this.ctx.resume().then(() => this.catchUpBeds());
     }
     this.unlocked = true;
-    this.catchUpAmbience();
+    void this.loadMusic(); // lazy, non-blocking; no-op after the first call
+    this.catchUpBeds();
   }
 
   /** If the game is already mid-play when audio becomes ready, catch up. */
-  private catchUpAmbience(): void {
-    const wantAmbience =
+  private catchUpBeds(): void {
+    const midPlay =
       !this.lastPaused &&
       (this.lastState === 'playing' || this.lastState === 'serving' || this.lastState === 'goal');
-    if (wantAmbience) this.startAmbience();
+    if (midPlay) this.startAmbience();
+    if (midPlay || (!this.lastPaused && this.lastState === 'gameover')) this.startMusic();
+  }
+
+  /** Fetch + decode the bundled music track once, after the first gesture. */
+  private async loadMusic(): Promise<void> {
+    if (this.musicLoadStarted || !this.ctx) return;
+    this.musicLoadStarted = true;
+    try {
+      const response = await fetch(musicUrl);
+      const encoded = await response.arrayBuffer();
+      this.musicBuffer = await this.ctx.decodeAudioData(encoded);
+    } catch {
+      // Fetch/decode failed (offline, unsupported codec) — allow a retry on
+      // a later gesture; the game simply plays without music meanwhile.
+      this.musicLoadStarted = false;
+      return;
+    }
+    this.catchUpBeds(); // start immediately if we're already mid-play
   }
 
   private applyMute(muted: boolean): void {
@@ -598,14 +664,58 @@ export class AudioSystem {
     noise.start(at, Math.random() * 1.8);
   }
 
-  /** Duck the room tone under goal/win jingles, then recover. */
+  /** Duck the room tone + music under goal/win jingles, then recover. */
   private duckAmbience(seconds: number): void {
-    if (!this.ctx || !this.ambienceOn) return;
+    if (!this.ctx) return;
     const now = this.ctx.currentTime;
     this.duckUntil = now + seconds;
-    this.ambienceBus.gain.cancelScheduledValues(now);
-    this.ambienceBus.gain.setValueAtTime(this.ambienceBus.gain.value, now);
-    this.ambienceBus.gain.linearRampToValueAtTime(AMBIENCE_LEVEL * 0.35, now + 0.1);
-    this.ambienceBus.gain.linearRampToValueAtTime(AMBIENCE_LEVEL, this.duckUntil);
+    if (this.ambienceOn) {
+      this.ambienceBus.gain.cancelScheduledValues(now);
+      this.ambienceBus.gain.setValueAtTime(this.ambienceBus.gain.value, now);
+      this.ambienceBus.gain.linearRampToValueAtTime(AMBIENCE_LEVEL * 0.35, now + 0.1);
+      this.ambienceBus.gain.linearRampToValueAtTime(AMBIENCE_LEVEL, this.duckUntil);
+    }
+    if (this.musicOn) {
+      this.musicBus.gain.cancelScheduledValues(now);
+      this.musicBus.gain.setValueAtTime(this.musicBus.gain.value, now);
+      this.musicBus.gain.linearRampToValueAtTime(this.musicBase * 0.35, now + 0.1);
+      this.musicBus.gain.linearRampToValueAtTime(this.musicBase, this.duckUntil);
+    }
+  }
+
+  // ---------------------------------------------------------------- music
+
+  /** Idempotent: at most one looping music source ever runs. */
+  private startMusic(): void {
+    if (!this.ready || this.musicOn || !this.musicBuffer) return;
+    const ctx = this.ctx!;
+    this.musicOn = true;
+
+    const source = ctx.createBufferSource();
+    source.buffer = this.musicBuffer;
+    source.loop = true; // seamless loop of the full track
+    source.connect(this.musicBus);
+    source.start();
+    this.musicSource = source;
+
+    const now = ctx.currentTime;
+    this.musicBus.gain.cancelScheduledValues(now);
+    this.musicBus.gain.setValueAtTime(Math.max(this.musicBus.gain.value, 0.0001), now);
+    this.musicBus.gain.linearRampToValueAtTime(this.musicBase, now + MUSIC_FADE);
+  }
+
+  private stopMusic(): void {
+    if (!this.musicOn) return;
+    this.musicOn = false;
+    if (this.musicSource && this.ctx) {
+      const source = this.musicSource;
+      const now = this.ctx.currentTime;
+      this.musicBus.gain.cancelScheduledValues(now);
+      this.musicBus.gain.setValueAtTime(this.musicBus.gain.value, now);
+      this.musicBus.gain.linearRampToValueAtTime(0.0001, now + MUSIC_FADE);
+      source.stop(now + MUSIC_FADE + 0.05);
+      source.addEventListener('ended', () => source.disconnect());
+    }
+    this.musicSource = null;
   }
 }

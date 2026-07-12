@@ -26,7 +26,8 @@ export function createHeroTable(): THREE.Group {
     getMaterial('playfield'),
   );
   playfield.rotation.x = -Math.PI / 2;
-  playfield.position.y = 0.0006;
+  // 2mm proud of the cabinet top so the plane never depth-fights it.
+  playfield.position.y = 0.002;
   playfield.receiveShadow = true;
   playfield.name = 'playfield';
   group.add(playfield);
@@ -41,9 +42,11 @@ export function createHeroTable(): THREE.Group {
   cabinet.name = 'cabinet';
   group.add(cabinet);
 
-  // Honey trim band around the cabinet top edge.
+  // Honey trim band around the cabinet top edge. Its top face sits 2mm BELOW
+  // the cabinet top — previously both were at y=0 and z-fought across the
+  // whole cabinet ring.
   const trim = new THREE.Mesh(new THREE.BoxGeometry(cabinetW + 0.012, 0.016, cabinetL + 0.012), honey);
-  trim.position.y = -0.008;
+  trim.position.y = -0.01;
   trim.name = 'cabinet-trim';
   group.add(trim);
 
@@ -81,15 +84,26 @@ export function createHeroTable(): THREE.Group {
   group.add(legs);
 
   // --- Rails ---------------------------------------------------------------
+  // Anti-z-fighting rules used below:
+  // - Rails sit 2.5mm above the cabinet top (no coplanar contact planes).
+  // - Side rails run 4mm longer than the end rails' outer faces so the
+  //   corner end-faces are never coplanar.
+  // - Caps are slightly FATTER than the rail half-thickness and sunk 2mm so
+  //   the cylinder crosses the rail faces at an angle instead of grazing
+  //   them tangentially (tangential contact shimmers in motion).
+  // - Cap lengths are 12mm shorter than their rails so cap end-faces never
+  //   sit in the same plane as rail end-faces.
   const t = TABLE.wallThickness; // 0.035
   const railH = 0.058;
-  const capRadius = t / 2;
-  const capGeometryLong = new THREE.CylinderGeometry(capRadius, capRadius, TABLE.length + t * 2, 10);
+  const railLift = 0.0025;
+  const capRadius = t / 2 + 0.003;
+  const sideRailLength = TABLE.length + t * 2 + 0.008;
+  const capGeometryLong = new THREE.CylinderGeometry(capRadius, capRadius, sideRailLength - 0.012, 10);
   const railMaterial = woodDark;
 
   const addRailBox = (w: number, d: number, x: number, z: number, name: string) => {
     const rail = new THREE.Mesh(new THREE.BoxGeometry(w, railH, d), railMaterial);
-    rail.position.set(x, railH / 2, z);
+    rail.position.set(x, railH / 2 + railLift, z);
     rail.castShadow = true;
     rail.receiveShadow = true;
     rail.name = name;
@@ -99,10 +113,15 @@ export function createHeroTable(): THREE.Group {
 
   // Long side rails: inner face flush with |x| = halfWidth.
   for (const sign of [-1, 1]) {
-    addRailBox(t, TABLE.length + t * 2, sign * (TABLE.halfWidth + t / 2), 0, `rail-side-${sign}`);
+    const railBox = new THREE.Mesh(new THREE.BoxGeometry(t, railH, sideRailLength), railMaterial);
+    railBox.position.set(sign * (TABLE.halfWidth + t / 2), railH / 2 + railLift, 0);
+    railBox.castShadow = true;
+    railBox.receiveShadow = true;
+    railBox.name = `rail-side-${sign}`;
+    group.add(railBox);
     const cap = new THREE.Mesh(capGeometryLong, honey);
     cap.rotation.x = Math.PI / 2;
-    cap.position.set(sign * (TABLE.halfWidth + t / 2), railH, 0);
+    cap.position.set(sign * (TABLE.halfWidth + t / 2), railH + railLift - 0.002, 0);
     cap.castShadow = false; // thin caps threw long streaks from the low lamp
     cap.name = `rail-cap-${sign}`;
     group.add(cap);
@@ -112,14 +131,14 @@ export function createHeroTable(): THREE.Group {
   const segmentWidth = TABLE.halfWidth - TABLE.goalHalfWidth;
   const segmentCenterX = TABLE.goalHalfWidth + segmentWidth / 2;
   const endZ = TABLE.halfLength + t / 2;
-  const capGeometryEnd = new THREE.CylinderGeometry(capRadius, capRadius, segmentWidth + t, 10);
+  const capGeometryEnd = new THREE.CylinderGeometry(capRadius, capRadius, segmentWidth + t - 0.012, 10);
   for (const zSign of [-1, 1]) {
     const paint = zSign > 0 ? rose : teal;
     for (const xSign of [-1, 1]) {
       addRailBox(segmentWidth + t, t, xSign * segmentCenterX, zSign * endZ, `rail-end-${zSign}-${xSign}`);
       const cap = new THREE.Mesh(capGeometryEnd, paint);
       cap.rotation.z = Math.PI / 2;
-      cap.position.set(xSign * segmentCenterX, railH, zSign * endZ);
+      cap.position.set(xSign * segmentCenterX, railH + railLift - 0.002, zSign * endZ);
       cap.castShadow = false; // thin caps threw long streaks from the low lamp
       group.add(cap);
     }

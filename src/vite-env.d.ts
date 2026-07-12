@@ -39,6 +39,8 @@ interface ThreeGameDiagnostics {
     activeVoices: number;
     voicesFired: number;
     ambienceOn: boolean;
+    musicOn: boolean;
+    musicLoaded: boolean;
     muted: boolean;
   };
   canvas: {

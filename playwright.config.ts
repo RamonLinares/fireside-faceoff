@@ -2,9 +2,12 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  timeout: 30_000,
+  // Headless Chromium renders WebGL through SwiftShader at ~5-10 fps, so
+  // state transitions that take a second of game time can take many seconds
+  // of wall time. Budgets are sized for that, not for real-GPU speed.
+  timeout: 90_000,
   expect: {
-    timeout: 5_000,
+    timeout: 20_000,
   },
   use: {
     baseURL: 'http://127.0.0.1:5190',

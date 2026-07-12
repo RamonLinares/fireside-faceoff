@@ -42,14 +42,31 @@ test('audio unlocks on gesture, fires voices, and follows pause/mute', async ({ 
     .poll(async () => page.evaluate(() => window.__THREE_GAME_DIAGNOSTICS__?.audio.ambienceOn))
     .toBe(true);
 
-  // Pause stops ambience cleanly; resume restarts it (idempotent layers).
+  // Background music decodes after the gesture and loops while playing.
+  await expect
+    .poll(
+      async () => page.evaluate(() => window.__THREE_GAME_DIAGNOSTICS__?.audio.musicLoaded),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+  await expect
+    .poll(async () => page.evaluate(() => window.__THREE_GAME_DIAGNOSTICS__?.audio.musicOn))
+    .toBe(true);
+
+  // Pause stops ambience + music cleanly; resume restarts them (idempotent).
   await page.keyboard.press('KeyP');
   await expect
     .poll(async () => page.evaluate(() => window.__THREE_GAME_DIAGNOSTICS__?.audio.ambienceOn))
     .toBe(false);
+  await expect
+    .poll(async () => page.evaluate(() => window.__THREE_GAME_DIAGNOSTICS__?.audio.musicOn))
+    .toBe(false);
   await page.keyboard.press('KeyP');
   await expect
     .poll(async () => page.evaluate(() => window.__THREE_GAME_DIAGNOSTICS__?.audio.ambienceOn))
+    .toBe(true);
+  await expect
+    .poll(async () => page.evaluate(() => window.__THREE_GAME_DIAGNOSTICS__?.audio.musicOn))
     .toBe(true);
 
   // A goal jingle: force gameover through the QA hook after real play started.

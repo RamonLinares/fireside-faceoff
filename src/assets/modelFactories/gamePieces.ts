@@ -112,7 +112,7 @@ export function createPuckVisual(): PuckVisual {
     }),
   );
   decal.rotation.x = -Math.PI / 2;
-  decal.position.y = h + 0.0008;
+  decal.position.y = h + 0.0016;
   group.add(decal);
 
   // Warm under-glow that VFX brightens while the puck is fast.
@@ -126,7 +126,9 @@ export function createPuckVisual(): PuckVisual {
   });
   const glow = new THREE.Mesh(new THREE.PlaneGeometry(r * 5, r * 5), glowMaterial);
   glow.rotation.x = -Math.PI / 2;
-  glow.position.y = 0.0015;
+  // 3mm above the playfield plane (y=0.002) so the additive quad never
+  // depth-fights the table surface.
+  glow.position.y = 0.005;
   group.add(glow);
 
   return { group, glowMaterial };
