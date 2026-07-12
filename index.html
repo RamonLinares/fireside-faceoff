@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#10141c" />
+    <title>Fireside Faceoff — cozy tabletop air hockey</title>
+    <!-- Inline favicon: avoids a /favicon.ico 404 on static hosts. -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%2310141c'/%3E%3Ccircle cx='32' cy='32' r='17' fill='%23e8b36a'/%3E%3Ccircle cx='32' cy='32' r='7' fill='%23c96a6a'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <main id="app">
+      <canvas id="game-canvas" aria-label="Air hockey game canvas"></canvas>
+      <section id="hud">
+        <!-- Top gameplay HUD -->
+        <div id="topbar">
+          <button id="btn-mute" class="icon-btn" type="button" aria-label="Mute sound" aria-pressed="false">
+            <svg class="icon icon-sound-on" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9.5v5a1 1 0 0 0 1 1h2.8l4.1 3.3a1 1 0 0 0 1.6-.8V6a1 1 0 0 0-1.6-.8L7.8 8.5H5a1 1 0 0 0-1 1Z" fill="currentColor"/>
+              <path d="M16.5 9.2a4 4 0 0 1 0 5.6M18.8 7a7 7 0 0 1 0 10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+            <svg class="icon icon-sound-off" viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 9.5v5a1 1 0 0 0 1 1h2.8l4.1 3.3a1 1 0 0 0 1.6-.8V6a1 1 0 0 0-1.6-.8L7.8 8.5H5a1 1 0 0 0-1 1Z" fill="currentColor"/>
+              <path d="m16.2 9.7 4.6 4.6m0-4.6-4.6 4.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            </svg>
+          </button>
+
+          <div id="scoreboard" role="status" aria-label="Score">
+            <span class="score-tag score-tag-rose">You</span>
+            <span id="score-player" class="score-num score-rose">0</span>
+            <span class="score-divider" aria-hidden="true">·</span>
+            <span id="score-ai" class="score-num score-teal">0</span>
+            <span class="score-tag score-tag-teal">Rival</span>
+            <div id="match-point" class="match-point" hidden>match point</div>
+          </div>
+
+          <button id="btn-pause" class="icon-btn" type="button" aria-label="Pause game">
+            <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+              <rect x="7" y="5.5" width="3.4" height="13" rx="1.6" fill="currentColor"/>
+              <rect x="13.6" y="5.5" width="3.4" height="13" rx="1.6" fill="currentColor"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Brief event banner (goal / serve) -->
+        <div id="banner" class="banner" aria-live="polite">
+          <span id="banner-text"></span>
+        </div>
+
+        <!-- Title screen -->
+        <div id="title-overlay" class="overlay">
+          <div class="card title-card">
+            <p class="kicker">a cozy little match before lights-out</p>
+            <h1 class="game-title"><span class="title-rose">Fireside</span> <span class="title-teal">Faceoff</span></h1>
+            <p class="tagline">Slide, ricochet, score — first to <strong>7</strong> wins.</p>
+            <button id="btn-play" class="btn btn-primary btn-big" type="button">Play</button>
+            <p class="hint">tap anywhere to start &nbsp;·&nbsp; drag to move your mallet</p>
+          </div>
+        </div>
+
+        <!-- Pause menu -->
+        <div id="pause-overlay" class="overlay overlay-dim" hidden>
+          <div class="card menu-card">
+            <h2 class="card-title">Paused</h2>
+            <div class="menu-buttons">
+              <button id="btn-resume" class="btn btn-primary" type="button">Resume</button>
+              <button id="btn-restart" class="btn" type="button">Restart</button>
+              <button id="btn-mute-menu" class="btn" type="button" aria-pressed="false">Sound: on</button>
+            </div>
+            <p class="hint">P or Esc also resumes</p>
+          </div>
+        </div>
+
+        <!-- Game over -->
+        <div id="gameover-overlay" class="overlay overlay-dim" hidden>
+          <div class="card menu-card">
+            <p id="gameover-kicker" class="kicker"></p>
+            <h2 id="gameover-title" class="card-title"></h2>
+            <div id="final-score" class="final-score" aria-label="Final score">
+              <span id="final-player" class="score-num score-rose">0</span>
+              <span class="score-divider" aria-hidden="true">·</span>
+              <span id="final-ai" class="score-num score-teal">0</span>
+            </div>
+            <p id="gameover-stats" class="stat-line"></p>
+            <div class="menu-buttons">
+              <button id="btn-again" class="btn btn-primary" type="button">Play again</button>
+            </div>
+            <p class="hint">tap anywhere or press R</p>
+          </div>
+        </div>
+      </section>
+    </main>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
